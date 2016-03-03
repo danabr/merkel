@@ -2,6 +2,8 @@
 
 -export([from_lambda/1]).
 
+-define(OCAML_TRUE, "1a").
+
 % -record(state, #{ mod = error(module_name_not_defined)
 %                 , funs = []
 %                 , exports = []
@@ -28,13 +30,13 @@ from_lambda(["setglobal", _ModName, In]) ->
 %% It is probably smarter to get the exports from makeblock.
 functions(["makeblock"|_])     -> [];
 functions(["let", Funs, In])   ->
-  lets(Funs) ++ functions(In);
+  func_lets(Funs) ++ functions(In);
 functions(["letrec", Fun, In]) ->
   [function(Fun)|functions(In)].
 
-lets([])                    -> [];
-lets([Fun, "=", Impl|Lets]) ->
-  [function([Fun, Impl])|lets(Lets)].
+func_lets([])                    -> [];
+func_lets([Fun, "=", Impl|Lets]) ->
+  [function([Fun, Impl])|func_lets(Lets)].
 
 function([Name, Fun]) ->
   {cerl:c_fname(scrub_name(Name), arity(Fun)), func(Fun)}.
@@ -56,12 +58,14 @@ expr(["apply", ["field", "15", ["global", "Pervasives!"]]|Args]) ->
 expr(["lists_reverse", A]) ->
   cerl:c_call(cerl:c_atom(lists), cerl:c_atom(reverse),
               [expr(A)]);
-expr(["apply", Name|Args])       ->
+expr(["apply", Name|Args])            ->
   io:format("Apply: ~p:~p~n", [Name, Args]),
   cerl:c_call(cerl:c_atom(test), scrub_atom(Name),
               lists:map(fun(A) -> expr(A) end, Args));
-expr(["if", Test, True, False])  ->
-  io:format("If: ~p, ~p, ~p~n", [Test, True, False]),
+%% Tuple access
+expr(["field", Index, Expr])          ->
+  bif(element, [cerl:c_int(Index), expr(Expr)]);
+expr(["if", Test, True, False])       ->
   TestExp = expr(Test),
   TrueExp = expr(True),
   FalseExp = expr(False),
@@ -71,29 +75,70 @@ expr(["if", Test, True, False])  ->
   FalseClause = cerl:c_clause([AtomFalse], FalseExp),
   FailClause = if_fail(),
   cerl:c_case(TestExp, [TrueClause, FalseClause, FailClause]);
-expr(["+.", A, B])                ->
-  expr(["+", A, B]);
-expr(["-.", A, B])                ->
-  expr(["-", A, B]);
-expr(["<=.", A, B])               ->
-  expr(["=<", A, B]);
-expr(["<=", A, B])               ->
-  expr(["=<", A, B]);
-expr([Op, A, B]) when Op =:= "+";
-                      Op =:= "-";
-                      Op =:= "=<" ->
-  io:format("Op: ~p~n", [Op]),
-  LhsExp = expr(A), 
-  RhsExp = expr(B), 
-  bif(list_to_existing_atom(Op), [LhsExp, RhsExp]);
-expr(Other)                       ->
+expr(["let", Lets, In])               ->
+  lets(Lets, In);
+expr(["letrec", FuncDef, In])         ->
+  letrec(FuncDef, In);
+expr(["makeblock"|_])                 ->
+  %% Ignore?
+  cerl:c_atom(makeblock);
+expr(["mod", Lhs, Rhs])               ->
+  op('rem', Lhs, Rhs);
+expr(["+", A, B])                     ->
+  op('+', A, B);
+expr(["+.", A, B])                    ->
+  op('+', A, B);
+expr(["-", A, B])                     ->
+  op('-', A, B);
+expr(["-.", A, B])                    ->
+  op('-', A, B);
+expr(["*", A, B])                     ->
+  op('*', A, B);
+expr(["*.", A, B])                    ->
+  op('*', A, B);
+expr(["/", A, B])                     ->
+  op('div', A, B);
+expr(["/.", A, B])                    ->
+  op('/', A, B);
+expr(["==", A, B])                    ->
+  op('=:=', A, B);
+expr(["caml_equal", A, B])            ->
+  op('=:=', A, B);
+expr(["<.", A, B])                    ->
+  op('<', A, B);
+expr(["<", A, B])                     ->
+  op('<', A, B);
+expr(["<=.", A, B])                   ->
+  op('=<', A, B);
+expr(["<=", A, B])                    ->
+  op('=<', A, B);
+expr(["&&", Lhs, Rhs])                ->
+  expr(["if", Lhs, Rhs, ?OCAML_TRUE]);
+%% Tuple construction
+expr(["0:"|Vals] )                    ->
+  cerl:c_tuple(lists:map(fun(V) -> expr(V) end, Vals));
+expr(Other)                           ->
   case classify(Other) of
     {float, Val}  -> cerl:abstract(Val);
-    {int, Val}    -> cerl:abstract(Val);
-    {string, Val} -> cerl:c_string(Val);
-    {var, Name}   -> cerl:ann_c_var([], Name);
-    Other       -> Other
+    {int, Val}    -> cerl:c_int(Val);
+    {string, Val} -> cerl:c_float(Val);
+    {var, Name}   -> cerl:ann_c_var([], Name)
   end.
+
+lets(Exps, Finally) ->
+  lets([Var, "="|Rest], Finally);
+lets([Var, "=", Expr], Finally) ->
+  cerl:c_let([Var], expr(Expr), expr(Finally));
+lets([Var, "=", Expr|Rest], Finally) ->
+  cerl:c_let([Var], expr(Expr), lets(Rest, Finally)).
+
+letrec([Name, Func], In) ->
+  cerl:c_letrec([{scrub_var(Name), func(Func)}], expr(In)).
+
+op(Op, Lhs, Rhs) ->
+  LhsExp = expr(Lhs),
+  RhsExp = expr(Rhs),
+  bif(Op, [LhsExp, RhsExp]).
 
 bif(Fun, Args) ->
   cerl:c_call(cerl:c_atom(erlang), cerl:c_atom(Fun), Args).
@@ -101,15 +146,13 @@ bif(Fun, Args) ->
 classify([$"|Rest])             -> % Assume string
   {string, lists:droplast(Rest)};
 classify(Val) when is_list(Val) ->
-  io:format("Classify ~s~n", [Val]),
+  io:format("Classify ~p~n", [Val]),
   case classify_numeral(Val) of
     {ok,  {int, Int}}    -> {int, Int};
     {ok, {float, Float}} -> {float, Float};
     error       ->
       {var, scrub_name(Val)}
-  end;
-classify(_Other) ->
-  cerl:c_atom(woot).
+  end.
 
 classify_numeral(Val) ->
   try list_to_integer(Val) of
@@ -138,13 +181,15 @@ args_and_body([Body], Args)            ->
 args_and_body([Arg|ArgsAndBody], Args) ->
   args_and_body(ArgsAndBody, [Arg|Args]).
 
-args(Args) ->
-  [ cerl:ann_c_var([], scrub_name(Name)) || Name <- Args ].
+args(Args) -> [ scrub_var(Name) || Name <- Args ].
 
 
 %% The ocaml ids are formatted like "fib/1001", to handle nested let
 %% bindings with the same identifier. Erlang does not support this.
 %% Skip for now.
+scrub_var(Name) ->
+  cerl:ann_c_var([], scrub_name(Name)).
+
 scrub_atom(Str) ->
   cerl:c_atom(scrub_name(Str)).
 

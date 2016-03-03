@@ -21,17 +21,36 @@ parse_args(")" ++ Rest0, Args)  -> {lists:reverse(Args), Rest0};
 parse_args("(" ++ Rest0, Args)  ->
   {Tree, Rest1} = parse_args(Rest0, []),
   parse_args(Rest1, [Tree|Args]);
+parse_args("[" ++ Rest0, Args)  ->
+  {Tree, Rest1} = parse_bracket_args(Rest0, []),
+  %% Should we tag these somehow?
+  parse_args(Rest1, [Tree|Args]);
 parse_args(Chars, Args)        ->
-  {Arg, Rest} = parse_arg(Chars, no_str, []),
+  {Arg, Rest} = parse_arg(Chars, []),
   parse_args(Rest, [Arg|Args]).
 
-parse_arg(")" ++ Rest, no_str, Arg)   -> {lists:reverse(Arg), ")" ++ Rest};
-parse_arg("\n" ++ Rest, no_str, Arg)  -> {lists:reverse(Arg), Rest};
-parse_arg(" " ++ Rest, no_str, Arg)   -> {lists:reverse(Arg), Rest};
-parse_arg("\"" ++ Rest, no_str, Arg)  ->
-  parse_arg(Rest, str, [$"|Arg]);
-parse_arg("\"" ++ Rest, str, Arg)     ->
-  parse_arg(Rest, no_str, [$"|Arg]);
-parse_arg([C|Rest], Mode, Arg)      ->
-  parse_arg(Rest, Mode, [C|Arg]).
+parse_arg(")" ++ Rest, Arg)  -> {lists:reverse(Arg), [$)|Rest]};
+parse_arg("\n" ++ Rest, Arg) -> {lists:reverse(Arg), Rest};
+parse_arg(" " ++ Rest, Arg)  -> {lists:reverse(Arg), Rest};
+parse_arg("[" ++ Rest, Arg)  -> {lists:reverse(Arg), [$[|Rest]};
+parse_arg("\"" ++ Rest, Arg) ->
+  parse_str(Rest, [$"|Arg]);
+parse_arg([C|Rest], Arg)        ->
+  parse_arg(Rest, [C|Arg]).
 
+parse_str("\"" ++ Rest, Arg)->
+  parse_arg(Rest, [$"|Arg]);
+parse_str([C|Rest], Arg)    ->
+  parse_str(Rest, [C|Arg]).
+
+parse_bracket_args("[" ++ _, _Arg)   -> error(nested_brackets);
+parse_bracket_args("]" ++ Rest, Arg) ->
+  {lists:reverse(Arg), Rest};
+parse_bracket_args(Chars, Args)    ->
+  {Arg, Rest} = parse_bracket_arg(Chars, []),
+  parse_bracket_args(Rest, [Arg|Args]).
+
+parse_bracket_arg("]" ++ Rest, Arg) -> {lists:reverse(Arg), [$]|Rest]};
+parse_bracket_arg(" " ++ Rest, Arg) -> {lists:reverse(Arg), Rest};
+parse_bracket_arg([C|Rest], Arg)    ->
+  parse_bracket_arg(Rest, [C|Arg]).
