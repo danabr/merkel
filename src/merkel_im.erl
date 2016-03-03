@@ -43,11 +43,39 @@ arity(["function"|ArgsAndBody]) ->
   length(lists:droplast(ArgsAndBody)).
 
 func(["function"|ArgsAndBody]) ->
-  cerl:c_fun(args(ArgsAndBody), cerl:abstract(ok)).
+  {Args, Body} = args_and_body(ArgsAndBody),
+  cerl:c_fun(args(Args), expr(Body)).
 
-args([_Body])     -> [];
-args([Name|Rest]) ->
-  [cerl:ann_c_var([], scrub_name(Name))|args(Rest)].
+expr(["if", Test, True, False]) ->
+  TestExp = expr(Test),
+  TrueExp = expr(True),
+  FalseExp = expr(False),
+  AtomTrue = cerl:c_atom(true),
+  AtomFalse = cerl:c_atom(false),
+  TrueClause = cerl:c_clause([AtomTrue], TrueExp),
+  FalseClause = cerl:c_clause([AtomFalse], FalseExp),
+  FailClause = if_fail(),
+  cerl:c_case(TestExp, [TrueClause, FalseClause, FailClause]);
+expr(_Other)                    ->
+  cerl:c_atom(true).
+
+if_fail() ->
+  Cv = cerl:ann_c_var([], omega),
+  fail_clause([Cv], cerl:c_atom(if_clause)).
+
+fail_clause(Pats, Reason) ->
+  cerl:c_clause(Pats, cerl:c_primop(cerl:c_atom(match_fail), [Reason])).
+
+args_and_body(ArgsAndBody)  ->
+  args_and_body(ArgsAndBody, []).
+
+args_and_body([Body], Args)            ->
+  {lists:reverse(Args), Body};
+args_and_body([Arg|ArgsAndBody], Args) ->
+  args_and_body(ArgsAndBody, [Arg|Args]).
+
+args(Args) ->
+  [ cerl:ann_c_var([], scrub_name(Name)) || Name <- Args ].
 
 %% The ocaml ids are formatted like "fib/1001", to handle nested let
 %% bindings with the same identifier. Erlang does not support this.
