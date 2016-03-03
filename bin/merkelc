@@ -1,0 +1,13 @@
+#!/bin/bash
+
+output_file="`basename $1 .ml`.lma"
+ocamlc -c -dlambda $1 2>$output_file
+exitcode=$?
+rm -f *.cmi *.cmo
+if [ $exitcode -ne 0 ]; then 
+  line=`grep --line-number "Error:" $output_file | cut -f1 -d:`
+  start=`expr $line - 1`
+  tail -n $line $output_file 1>&2
+  rm $output_file
+  exit 1
+fi
