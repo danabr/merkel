@@ -125,7 +125,7 @@ expr(Other)                           ->
     {var, Name}   -> cerl:ann_c_var([], Name)
   end.
 
-lets(Exps, Finally) ->
+lets([Var, "=a"|Rest], Finally) ->
   lets([Var, "="|Rest], Finally);
 lets([Var, "=", Expr], Finally) ->
   cerl:c_let([Var], expr(Expr), expr(Finally));
