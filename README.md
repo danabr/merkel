@@ -12,7 +12,7 @@ even barely suitable) for actual production use.
 
 ## Running
 ```
-erlc -pa ebin/ src/*.erl
+erlc -o ebin/ src/*.erl
 ./bin/merkelc examples/ml_fib.ml
 ```
 ```erlang
