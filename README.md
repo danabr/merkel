@@ -84,10 +84,21 @@ languages.
 Another example of "type confusion" is that the empty list (nil) and the atom
 both have the same value ("0a"). Thus, the condition of "if" expression can be a list.
 
+### Approach 2: typedtree to lfe
+The ocaml compiler internally manages a "typed tree" (basically an AST annotated with
+type informaton). This is naturally much richer in information than the untyped lambda
+form.
+
+Work in progress, but some notes:
+* The tree is too high level to be convenient to work with. We need to consider things
+  like currying, optional parameters, etc. My current feeling is that something in-between
+  the typed tree and the lambda form is what I am looking for.
+
+
 ## Other possible approaches
 * ocaml bytecode -> BEAM bytecode [6]
   js_of_ocaml took such an approach. Need to keep in mind that BEAM is register-based whereas
-  ocaml's VM is stack based.
+  ocaml's VM is stack based. Type confusion may make this approach impossible.
 
 ## References
 [1] https://github.com/erlang/otp
