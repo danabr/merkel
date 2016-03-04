@@ -19,7 +19,7 @@ erlc -o ebin/ src/*.erl
 erl -pa ebin
 1> {ok, Sexp} = merkel_lambda_parser:parse_file("ml_fib.lma").
 2> LFESexp = merkel_lfe:to_lfe(ml_fib, Sexp).
-3> LFE = merkel_sexp:to_string(LFESexp).
+3> LFE = string:join([merkel_sexp:to_string(C) || C <- LFESexp], "\n").
 4> {ok, ml_fib, Bin} = merkel_lfe_comp:string(LFE).
 5> ok = file:write_file("ebin/ml_fib.beam", Bin).
 6> l(ml_fib).
