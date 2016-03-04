@@ -5,9 +5,9 @@ virtual machine. Built purely for the sake of exploration. Not meant (or
 even barely suitable) for actual production use.
 
 ## Prerequisites
-* Erlang/OTP 17 or later
-* LFE (Lisp flavoured Erlang)
-* OCaml 4.02.1
+* Erlang/OTP 17 or later [1]
+* LFE (Lisp flavoured Erlang) [2]
+* OCaml 4.02.1 [3]
 
 
 ## Running
@@ -30,3 +30,55 @@ erl -pa ebin
 9> ml_fib:'rev/1013'([1,2,3]).
 [3,2,1]
 ```
+
+## Approach
+This section describes the various approaches taken to generate BEAM files from
+ocaml souuce code.
+
+### Approach 0: lambda to Core Erlang
+The first approach taken was to take the output from `ocamlc -dlambda`
+("the untyped lambda form" [4]) and generate Core Erlang [5].
+
+The lambda form was chosen because it seemed fairly easy to parse. It also seemed
+to be at roughly the same abstraction level as Core Erlang, without too many
+ML level abstractions that would be hard to transfer to the Erlang world.
+
+I chose Core Erlang because it seemed easier than generating BEAM bytecode directly.
+It also meant that I could generate some fairly dumb code and hopefully the erlang
+compiler would take care of optimizing it.
+
+This approach failed because generating proper Core Erlang was too messy.
+Although by all means achievable, it wasn't very well suitable for the rapid
+prototyping I was trying to achieve. Nevertheless, I managed to generate some
+working code (see the now defunct merkel_im module), which was encouraging.
+
+### Approach 1: lambda to lfe
+While working with the lambda form, it occurred to me it would probably be quite easy
+to transform it into (some) lisp. So I switched out Core Erlang in favour of LFE. This
+was a good decision. LFE was much easier to work with which let me focus on understanding
+the lambda format.
+
+Now being able to take on more complex structures, I noted a few issues with lambda
+which ultimately led me to abandon it. Ironically, they were all related to types.
+
+The lambda format does not distinguish between tuples and lists. Lists are essentially
+{head,tail} tuples (like in lisp). However, at the BEAM level, we DO care about the
+distinction. Knowing what to generate in each case became impossible, and only going
+for one of them would make the generated modules awkward to use from other BEAM
+languages.
+
+Another example of "type confusion" is that the empty list (nil) and the atom
+both have the same value ("0a"). Thus, the condition of "if" expression can be a list.
+
+## Other possible approaches
+* ocaml bytecode -> beam bytecode
+  js_of_ocaml took this approach. Need to keep in mind that BEAM is register-based whereas
+  ocaml's VM is stack based.
+
+## References
+[1] https://github.com/erlang/otp
+[2] https://github.com/rvirding/lfe
+[3] https://github.com/ocaml/ocaml
+[4] https://realworldocaml.org/v1/en/html/the-compiler-backend-byte-code-and-native-code.html
+[5] https://www.it.uu.se/research/group/hipe/cerl/
+[5] http://erlangonxen.org/more/beam
