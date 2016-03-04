@@ -6,20 +6,17 @@ to_string(Sexp) when is_list(Sexp) ->
   lists:flatten(str(Sexp)).
 
 
-str([])                          -> [];
-str([A]) when is_atom(A)         ->
-  atom_to_list(A);
-str([A|Rest]) when is_atom(A)    ->
-  [atom_to_list(A), " ", str(Rest)];
-str([B]) when is_binary(B)       ->
-  binary_to_list(B);
-str([B|Rest]) when is_binary(B)  ->
-  [binary_to_list(B), " ", str(Rest)];
-str([I]) when is_integer(I)      ->
-  integer_to_list(I);
-str([I|Rest]) when is_integer(I) ->
-  [integer_to_list(I), " ", str(Rest)];
-str([S]) when is_list(S)         ->
+str([])                       -> [];
+str([S]) when is_list(S)      ->
   [$(, str(S), $)];
-str([S|Rest]) when is_list(S)    ->
-  [$(, str(S), $), " ", str(Rest)].
+str([X])      ->
+  to_list(X);
+str([S|Rest]) when is_list(S) ->
+  [$(, str(S), $), " ", str(Rest)];
+str([X|Rest])                 ->
+  [to_list(X), " ", str(Rest)].
+
+to_list(X) when is_atom(X)    -> atom_to_list(X);
+to_list(X) when is_binary(X)  -> binary_to_list(X);
+to_list(X) when is_float(X)   -> float_to_list(X);
+to_list(X) when is_integer(X) -> integer_to_list(X).

@@ -91,6 +91,10 @@ expr([<<"&&">>, Lhs, Rhs], State)                            ->
 %% Comparison operators
 expr([<<"<">>, Lhs, Rhs], State)                             ->
   op('<', Lhs, Rhs, State);
+expr([<<"<=.">>, Lhs, Rhs], State)                           ->
+  op('=<', Lhs, Rhs, State);
+expr([<<"<=">>, Lhs, Rhs], State)                            ->
+  op('=<', Lhs, Rhs, State);
 expr([<<"caml_equal">>, Lhs, Rhs], State)                    ->
   op('=:=', Lhs, Rhs, State);
 expr([<<"==">>, Lhs, Rhs], State)                            ->
@@ -100,14 +104,24 @@ expr([<<"!=">>, Lhs, Rhs], State)                            ->
 %% Integer + Float operators
 expr([<<"mod">>, Lhs, Rhs], State)                           ->
   op('rem', Lhs, Rhs, State);
+expr([<<"+.">>, Lhs, Rhs], State)                            ->
+  op('+', Lhs, Rhs, State);
 expr([<<"+">>, Lhs, Rhs], State)                             ->
   op('+', Lhs, Rhs, State);
+expr([<<"-.">>, Lhs, Rhs], State)                            ->
+  op('-', Lhs, Rhs, State);
 expr([<<"-">>, Lhs, Rhs], State)                             ->
   op('-', Lhs, Rhs, State);
 expr([<<"*">>, Lhs, Rhs], State)                             ->
   op('*', Lhs, Rhs, State);
 expr([<<"/">>, Lhs, Rhs], State)                             ->
   op('div', Lhs, Rhs, State);
+%% LFE-inspired erlang calling convention.
+%% Not part of standard lambda.
+%% See ml_fib.ml for an example.
+expr([<<":">>, Mod, Fun|Args], State) when is_binary(Mod),
+                                           is_binary(Fun)    ->
+  [<<":">>, Mod, Fun|exprs(Args, State)];
 %% Literals
 expr(X, State) when is_binary(X)                             ->
   literal(X, State);
