@@ -11,6 +11,7 @@ type sexp =
 
 let translate_fn_name = function
   | "Pervasives.<=" -> "=<"
+  | "Pervasives.+" -> "+"
   | "Pervasives.-" -> "-"
   | "Pervasives.*" -> "*"
   | other           -> other
@@ -49,18 +50,28 @@ let rec expr state e =
   | _                                                ->
     Atom "todo:expr"
 and
-strict_args state = function
+  strict_args state = function
   | []                     -> [];
   | (_, (Some e)) :: exprs ->
     (expr state e) :: (strict_args state exprs)
   | (_, None) :: _         -> raise (ParseError "Missing expression in arg position")
 
-let pattern state pat =
+let rec pattern state pat =
   match pat.pat_desc with
-  | Tpat_var (id, loc) ->
+  | Tpat_var (id, loc)                   ->
     Atom (Ident.name id)
-  | _                     ->
+  | Tpat_construct (loc, desc, patterns) ->
+    constructor_pattern state patterns desc.cstr_name
+  | _                                    ->
     Atom "pattern_not_implemented"
+and
+  constructor_pattern state patterns = function
+  | "[]" -> Atom "()"
+  | "::" ->
+    let patterns = List.map (pattern state) patterns in
+    Sexp ((Atom "cons") :: patterns)
+  | _    -> Atom "constructor_pattern_not_implemented"
+
 
 let rec function_clauses state = function
   | []            -> [];
