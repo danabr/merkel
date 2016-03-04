@@ -71,14 +71,19 @@ Another example of "type confusion" is that the empty list (nil) and the atom
 both have the same value ("0a"). Thus, the condition of "if" expression can be a list.
 
 ## Other possible approaches
-* ocaml bytecode -> beam bytecode
-  js_of_ocaml took this approach. Need to keep in mind that BEAM is register-based whereas
+* ocaml bytecode -> BEAM bytecode [6]
+  js_of_ocaml took such an approach. Need to keep in mind that BEAM is register-based whereas
   ocaml's VM is stack based.
 
 ## References
 [1] https://github.com/erlang/otp
+
 [2] https://github.com/rvirding/lfe
+
 [3] https://github.com/ocaml/ocaml
+
 [4] https://realworldocaml.org/v1/en/html/the-compiler-backend-byte-code-and-native-code.html
+
 [5] https://www.it.uu.se/research/group/hipe/cerl/
-[5] http://erlangonxen.org/more/beam
+
+[6] http://erlangonxen.org/more/beam
