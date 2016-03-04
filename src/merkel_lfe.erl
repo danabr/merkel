@@ -28,26 +28,42 @@ function([Name, [<<"function">>|ArgsAndBody]], State) ->
   {Args, Body} = args_and_body(ArgsAndBody),
   [defun, scrub_name(Name), Args, expr(Body, State)].
 
-expr([<<"let">>, Defs, In], State) ->
+expr([<<"apply">>, Fun|Args], State)   ->
+  ArgsExpr = [ expr(Arg, State) || Arg <- Args ],
+  [var(Fun, State)|ArgsExpr];
+expr([<<"field">>, Index, Var], State) ->
+  [element, tuple_index(integer(Index)), var(Var, State)];
+expr([<<"let">>, Defs, In], State)     ->
   lets(Defs, In, State);
-expr([<<"mod">>, Lhs, Rhs], State) ->
+%% Boolean operators
+expr([<<"&&">>, Lhs, Rhs], State)      ->
+  op('andalso', Lhs, Rhs, State);
+%% Comparison operators
+expr([<<"==">>, Lhs, Rhs], State)      ->
+  op('=:=', Lhs, Rhs, State);
+%% Integer + Float operators
+expr([<<"mod">>, Lhs, Rhs], State)     ->
   op('rem', Lhs, Rhs, State);
-expr([<<"+">>, Lhs, Rhs], State)   ->
+expr([<<"+">>, Lhs, Rhs], State)       ->
   op('+', Lhs, Rhs, State);
-expr([<<"-">>, Lhs, Rhs], State)   ->
+expr([<<"-">>, Lhs, Rhs], State)       ->
   op('-', Lhs, Rhs, State);
-expr([<<"*">>, Lhs, Rhs], State)   ->
+expr([<<"*">>, Lhs, Rhs], State)       ->
   op('*', Lhs, Rhs, State);
-expr([<<"/">>, Lhs, Rhs], State)   ->
+expr([<<"/">>, Lhs, Rhs], State)       ->
   op('div', Lhs, Rhs, State);
-expr(X, State) when is_binary(X)   ->
+%% Literals
+expr(X, State) when is_binary(X)       ->
   literal(X, State);
-expr(Expr, _State)                 ->
+expr(Expr, _State)                     ->
   error(Expr).
 
 
-lets([Name, <<"=">>, Expr], In, State) ->
+lets([Name, <<"=">>, Expr], In, State)      ->
   ['let', [def(Name, Expr, State)], expr(In, State)];
+%% a = alias
+lets([Name, <<"=a">>|Lets], In, State)      ->
+  lets([Name, <<"=">>|Lets], In, State);
 lets([Name, <<"=">>, Expr|Lets], In, State) ->
   ['let', [def(Name, Expr, State)], lets(Lets, In, State)].
 
@@ -81,10 +97,17 @@ var([C|Rest], State, Acc) ->
   var(Rest, State, [C|Acc]).
 
 numeral(X, _State) ->
-  try list_to_integer(X)
+  try integer(X)
   catch
     error:badarg -> list_to_float("0" ++ X ++ "0")
   end.
+
+integer(Val) when is_binary(Val) ->
+  binary_to_integer(Val);
+integer(Val) when is_list(Val)   ->
+  list_to_integer(Val).
+
+tuple_index(N) when N >= 0 -> N+1.
 
 args_and_body(ArgsAndBody)  ->
   args_and_body(ArgsAndBody, []).
