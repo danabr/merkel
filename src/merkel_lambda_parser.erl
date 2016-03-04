@@ -1,3 +1,4 @@
+%% ocaml 4.02.1 lambda -> sexp
 -module(merkel_lambda_parser).
 
 -export([ parse/1
@@ -27,7 +28,7 @@ parse_args("[" ++ Rest0, Args)  ->
   parse_args(Rest1, [Tree|Args]);
 parse_args(Chars, Args)        ->
   {Arg, Rest} = parse_arg(Chars, []),
-  parse_args(Rest, [Arg|Args]).
+  parse_args(Rest, [list_to_binary(Arg)|Args]).
 
 parse_arg(")" ++ Rest, Arg)  -> {lists:reverse(Arg), [$)|Rest]};
 parse_arg("\n" ++ Rest, Arg) -> {lists:reverse(Arg), Rest};
