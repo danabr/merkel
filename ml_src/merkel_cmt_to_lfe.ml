@@ -42,6 +42,8 @@ let rec expr state e =
     Sexp (id(fn) :: (strict_args state args))
   | Texp_constant c                                  ->
     constant c
+  | Texp_construct (loc, desc, exprs)                ->
+    constructor_exprs state exprs desc.cstr_name
   | Texp_ident (path, loc, typ)                      ->
     Atom (translate_fn_name (Path.name path))
   | Texp_ifthenelse (test, if_true, (Some if_false)) ->
@@ -55,13 +57,22 @@ and
   | (_, (Some e)) :: exprs ->
     (expr state e) :: (strict_args state exprs)
   | (_, None) :: _         -> raise (ParseError "Missing expression in arg position")
+and
+  constructor_exprs state exprs = function
+  | "false" -> Atom "'false"
+  | "true"  -> Atom "'true"
+  | _       -> Atom "constructor_expression_not_implemented"
 
 let rec pattern state pat =
   match pat.pat_desc with
-  | Tpat_var (id, loc)                   ->
-    Atom (Ident.name id)
+  | Tpat_any                             ->
+    Atom "_"
+  | Tpat_constant c                      ->
+    constant c
   | Tpat_construct (loc, desc, patterns) ->
     constructor_pattern state patterns desc.cstr_name
+  | Tpat_var (id, loc)                   ->
+    Atom (Ident.name id)
   | _                                    ->
     Atom "pattern_not_implemented"
 and
