@@ -11,9 +11,11 @@ even barely suitable) for actual production use.
 
 
 ## Running
+
+### lambda -> lfe
 ```
-erlc -o ebin/ src/*.erl
-./bin/merkelc examples/ml_fib.ml
+$ erlc -o ebin/ src/*.erl
+$ ./bin/merkelc-lambda examples/ml_fib.ml
 ```
 ```erlang
 erl -pa ebin
@@ -29,6 +31,18 @@ erl -pa ebin
 55.0
 9> ml_fib:'rev/1013'([1,2,3]).
 [3,2,1]
+```
+
+### typedtree (cmt) -> lfe
+```
+$ ./bin/merkelc-typedtree examples/fac.ml
+$ ocamlfind ocamlc -package compiler-libs.common -o ./bin/merkel_cmt_to_lfe ml_src/merkel_cmt_to_lfe.ml
+$ ./bin/merkel_cmt_to_lfe examples/fac.cmt
+$ ./bin/merkel_cmt_to_lfe examples/fac.cmt > /tmp/fac.lfe
+$ lfec -o ebin/ /tmp/fac.lfe
+$ erl -pa ebin
+1> 'Fac':fac(10).
+3628800
 ```
 
 ## Approach
