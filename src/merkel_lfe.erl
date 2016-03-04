@@ -28,34 +28,56 @@ function([Name, [<<"function">>|ArgsAndBody]], State) ->
   {Args, Body} = args_and_body(ArgsAndBody),
   [defun, scrub_name(Name), Args, expr(Body, State)].
 
-expr([<<"apply">>, Fun|Args], State)   ->
+
+%% Tuples
+expr([<<"0:">>|Elements], State)                 ->
+  Lits = [ literal(E, State) || E <- Elements ],
+  ['tuple'|Lits];
+expr([<<"makeblock">>, <<"0">>|Elements], State) ->
+  ElExprs = [ expr(E, State) || E <- Elements ],
+  ['tuple'|ElExprs];
+expr([<<"field">>, Index, Var], State)           ->
+  [element, tuple_index(integer(Index)), var(Var, State)];
+%% Function construction and application
+expr([<<"apply">>, Fun|Args], State)             ->
   ArgsExpr = [ expr(Arg, State) || Arg <- Args ],
   [var(Fun, State)|ArgsExpr];
-expr([<<"field">>, Index, Var], State) ->
-  [element, tuple_index(integer(Index)), var(Var, State)];
-expr([<<"let">>, Defs, In], State)     ->
+expr([<<"function">>|ArgsAndBody], State)        ->
+  {Args, Body} = args_and_body(ArgsAndBody),
+  [lambda, Args, expr(Body, State)];
+%% Control structures
+expr([<<"if">>, Test, True, False], State)       ->
+  ['if', expr(Test, State), expr(True, State), expr(False, State)];
+%% Assignment
+expr([<<"let">>, Defs, In], State)               ->
   lets(Defs, In, State);
+expr([<<"letrec">>, [Name, Func], In], State)    ->
+  ['letrec-function', [[var(Name, State), expr(Func, State)]], expr(In, State)];
 %% Boolean operators
-expr([<<"&&">>, Lhs, Rhs], State)      ->
+expr([<<"&&">>, Lhs, Rhs], State)                ->
   op('andalso', Lhs, Rhs, State);
 %% Comparison operators
-expr([<<"==">>, Lhs, Rhs], State)      ->
+expr([<<"<">>, Lhs, Rhs], State)                 ->
+  op('<', Lhs, Rhs, State);
+expr([<<"caml_equal">>, Lhs, Rhs], State)        ->
+  op('=:=', Lhs, Rhs, State);
+expr([<<"==">>, Lhs, Rhs], State)                ->
   op('=:=', Lhs, Rhs, State);
 %% Integer + Float operators
-expr([<<"mod">>, Lhs, Rhs], State)     ->
+expr([<<"mod">>, Lhs, Rhs], State)               ->
   op('rem', Lhs, Rhs, State);
-expr([<<"+">>, Lhs, Rhs], State)       ->
+expr([<<"+">>, Lhs, Rhs], State)                 ->
   op('+', Lhs, Rhs, State);
-expr([<<"-">>, Lhs, Rhs], State)       ->
+expr([<<"-">>, Lhs, Rhs], State)                 ->
   op('-', Lhs, Rhs, State);
-expr([<<"*">>, Lhs, Rhs], State)       ->
+expr([<<"*">>, Lhs, Rhs], State)                 ->
   op('*', Lhs, Rhs, State);
-expr([<<"/">>, Lhs, Rhs], State)       ->
+expr([<<"/">>, Lhs, Rhs], State)                 ->
   op('div', Lhs, Rhs, State);
 %% Literals
-expr(X, State) when is_binary(X)       ->
+expr(X, State) when is_binary(X)                 ->
   literal(X, State);
-expr(Expr, _State)                     ->
+expr(Expr, _State)                               ->
   error(Expr).
 
 
@@ -70,15 +92,13 @@ lets([Name, <<"=">>, Expr|Lets], In, State) ->
 def(Name, Expr, State) ->
   [var(Name, State), expr(Expr, State)].
 
-% defs([], _State)                    -> [];
-% defs([Name, <<"=">>, Expr|Defs], State) ->
-%   [[scrub_name(Name), expr(Expr, State)]|defs(Defs, State)].
-
 op(Op, Lhs, Rhs, State) ->
   [Op, expr(Lhs, State), expr(Rhs, State)].
 
 literal(X, State) when is_binary(X)           ->
   literal(binary_to_list(X), State);
+literal([$-|_]=X, State)                      ->
+  numeral(X, State);
 literal([C|_]=X, State) when $0 =< C, C =< $9 ->
   numeral(X, State);
 literal(X, State)                             ->

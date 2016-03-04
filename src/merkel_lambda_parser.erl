@@ -49,7 +49,7 @@ parse_bracket_args("]" ++ Rest, Arg) ->
   {lists:reverse(Arg), Rest};
 parse_bracket_args(Chars, Args)    ->
   {Arg, Rest} = parse_bracket_arg(Chars, []),
-  parse_bracket_args(Rest, [Arg|Args]).
+  parse_bracket_args(Rest, [list_to_binary(Arg)|Args]).
 
 parse_bracket_arg("]" ++ Rest, Arg) -> {lists:reverse(Arg), [$]|Rest]};
 parse_bracket_arg(" " ++ Rest, Arg) -> {lists:reverse(Arg), Rest};
