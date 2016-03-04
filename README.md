@@ -17,7 +17,7 @@ erlc -o ebin/ src/*.erl
 ```
 ```erlang
 erl -pa ebin
-1> Sexp = merkel_lambda_parser:parse_file("ml_fib.lma").
+1> {ok, Sexp} = merkel_lambda_parser:parse_file("ml_fib.lma").
 2> LFESexp = merkel_lfe:to_lfe(ml_fib, Sexp).
 3> LFE = merkel_sexp:to_string(LFESexp).
 4> {ok, ml_fib, Bin} = merkel_lfe_comp:string(LFE).
