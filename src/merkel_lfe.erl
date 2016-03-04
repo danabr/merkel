@@ -35,6 +35,10 @@ expr([<<"0:">>|Elements], State)                             ->
   Lits = [ literal(E, State) || E <- Elements ],
   ['tuple'|Lits];
 expr([<<"makeblock">>|Elements], State)                      ->
+  %% In the world of ocaml-lambda, lists are tuples
+  %% (head,tail). That means there is no way to distinguish
+  %% whether we want to construct a list or a tuple.
+  %% Reason to give up?
   ['tuple'|exprs(Elements, State)];
 %% field may extract from either a list or a tuple.
 %% Either the head or tail of a list may be extracted,
@@ -129,9 +133,10 @@ op(Op, Lhs, Rhs, State) ->
   [Op, expr(Lhs, State), expr(Rhs, State)].
 
 %% "0a" may mean either 'false' or [] (the empty list).
+%% For now we treat it as the empty list.
 %% TODO: Can we find out from the context?
 literal(<<"0a">>, _State)                     ->
-  <<"'false">>;
+  <<"()">>;
 literal(<<"1a">>, _State)                     ->
   <<"'true">>;
 literal(X, State) when is_binary(X)           ->
