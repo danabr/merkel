@@ -4,7 +4,7 @@ This page describes various experiements with ocaml->erlang interoperability.
 
 ## Atoms <-> polymorphic variants
 Polymorphic variants are turned into atoms and tuples. E.g. the polymorphic
-variant `` `Red` ` is converted into the atom `'red'`, and the polymorphic variant
+variant `` `Red` `` is converted into the atom `'red'`, and the polymorphic variant
 `` `Rgb of int*int*int `` is turned into the tuple `{rgb, {r,g,b}}`.
 
 Here is an example:
