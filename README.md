@@ -89,10 +89,16 @@ The ocaml compiler internally manages a "typed tree" (basically an AST annotated
 type informaton). This is naturally much richer in information than the untyped lambda
 form.
 
-Work in progress, but some notes:
-* The tree is too high level to be convenient to work with. We need to consider things
-  like currying, optional parameters, etc. My current feeling is that something in-between
-  the typed tree and the lambda form is what I am looking for.
+Note:
+  * Work in progress
+  * The tree is too high level to be convenient to work with. We need to consider things
+    like currying, optional parameters, etc. My current feeling is that something in-between
+    the typed tree and the lambda form is what I am looking for.
+  * ocaml uses currying and only has single argument functions in the typed tree.
+    We need to "uncurry" these somehow, to make it feasible to call multi argument
+    functions from erlang land.
+  * ocaml comes with "or patterns", which lfe and erlang don't support.
+    These patterns need to be unnested.
 
 
 ## Other possible approaches
