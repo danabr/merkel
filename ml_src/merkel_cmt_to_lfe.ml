@@ -9,13 +9,16 @@ type sexp =
     Atom of string
   | Sexp of sexp list
 
-let atom s = Atom ("'" ^ s)
+let atom s =
+   Atom ("'" ^ (String.lowercase_ascii s))
 
 let translate_fn_name = function
   | "Pervasives.<=" -> "=<"
-  | "Pervasives.+" -> "+"
-  | "Pervasives.-" -> "-"
-  | "Pervasives.*" -> "*"
+  | "Pervasives.==" -> "=:="
+  | "Pervasives.="  -> "=:="
+  | "Pervasives.+"  -> "+"
+  | "Pervasives.-"  -> "-"
+  | "Pervasives.*"  -> "*"
   | other           -> other
 
 let var state pat =
@@ -45,12 +48,17 @@ let rec expr state e =
   | Texp_constant c                                   ->
     constant c
   | Texp_construct (loc, desc, exprs)                 ->
-    constructor_exprs state exprs desc.cstr_name
+    let exprs = List.map (expr state) exprs in
+    constructor state exprs desc
   | Texp_ident (path, loc, typ)                       ->
     Atom (translate_fn_name (Path.name path))
-  | Texp_ifthenelse (test, if_true, (Some if_false) ) ->
+  | Texp_function (arg_label, cases, partial) ->
+    let clauses = expand_or_patterns cases in
+    let rest = match_clauses state ~wrap_patterns:true clauses in
+    Sexp ((Atom "match-lambda") :: rest)
+  | Texp_ifthenelse (test, if_true, else_option ) ->
     Sexp [Atom "if"; (expr state test);
-          (expr state if_true); (expr state if_false)]
+          (expr state if_true); (else_expr state else_option)]
   | Texp_let (Nonrecursive, value_bindings, in_expr)  ->
     Sexp [Atom "let*"; Sexp (bindings state value_bindings);
           expr state in_expr]
@@ -68,16 +76,30 @@ let rec expr state e =
   | _                                                 ->
     Atom "todo:expr"
 and
+  else_expr state = function
+    | None   -> atom "false"
+    | Some e -> expr state e
+and
   strict_args state = function
     | []                     -> [];
     | (_, (Some e)) :: exprs ->
       (expr state e) :: (strict_args state exprs)
     | (_, None) :: _         -> raise (ParseError "Missing expression in arg position")
 and
-  constructor_exprs state exprs = function
-    | "false" -> Atom "'false"
-    | "true"  -> Atom "'true"
-    | _       -> Atom "constructor_expression_not_implemented"
+  constructor state rest desc =
+    match (desc.cstr_name, desc.cstr_res.desc, rest) with
+      | "false", _, _            -> Atom "'false"
+      | "true", _, _             -> Atom "'true"
+      | "[]", _, _               -> Atom "()"
+      | "::", _, _               ->
+        Sexp ((Atom "cons") :: rest)
+      (* Treat variants as atoms for now *)
+      | c, (Types.Tconstr _), [] ->
+        atom c
+      | c, (Types.Tconstr _), __ ->
+        Sexp ((Atom "tuple" :: (atom c) :: rest))
+      | c, _, _                  ->
+         raise (ParseError ("missing constructor " ^ c))
 and
   pattern state pat =
     match pat.pat_desc with
@@ -89,7 +111,8 @@ and
     | Tpat_constant c                        ->
       constant c
     | Tpat_construct (loc, desc, patterns)   ->
-      constructor_pattern state patterns desc.cstr_name
+      let patterns = List.map (pattern state) patterns in
+      constructor state patterns desc
     | Tpat_or (p1, p2, rowdesc)              ->
       raise (ParseError "or pattern not expanded")
     | Tpat_tuple patterns                    ->
@@ -102,22 +125,15 @@ and
     | _                                      ->
       Atom "pattern_not_implemented"
 and
-  constructor_pattern state patterns = function
-    | "[]" -> Atom "()"
-    | "::" ->
-      let patterns = List.map (pattern state) patterns in
-      Sexp ((Atom "cons") :: patterns)
-    | _    -> Atom "constructor_pattern_not_implemented"
-and
   variant_pattern state label p rowdesc =
-    let atom = atom (String.lowercase_ascii label) in
+    let atom = atom label in
     match p with
       | None   ->  atom
       | Some p ->
         Sexp [Atom "tuple"; atom; (pattern state p)]
 and
   variant_expr state label e =
-    let atom = atom (String.lowercase_ascii label) in
+    let atom = atom label in
     match e with
       | None   ->  atom
       | Some e ->
@@ -145,7 +161,11 @@ and
 (*
   OCaml has or-pattern, which lfe/erlang does not support.
   All clauses containing or patterns must be duplicated.
-  The approach taken here is ad-hoc and inefficient.
+  The approach taken here is ad-hoc and inefficient,
+  and broken in at least one known case, namely:
+    let only_small_lists = function
+      | [_] | [_;_] as x  -> x
+      | _ -> []
 *)
   flatten_or p =
     match p.pat_desc with
@@ -176,7 +196,9 @@ and
 let define_function state is_rec vb =
   match vb.vb_expr.exp_desc with
   | Texp_function (arg_label, cases, partial) ->
-    (* Note: All functions are single argument functions *)
+    (* Note: All functions are single argument functions.
+       This gets weird in Erlang land.
+    *)
     let clauses = expand_or_patterns cases in
     let rest = match_clauses state ~wrap_patterns:true clauses in
     Sexp ((Atom "defun") :: (var state vb.vb_pat) :: rest)
