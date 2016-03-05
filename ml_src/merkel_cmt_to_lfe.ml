@@ -1,7 +1,7 @@
 (* .cmt file in -> lfe out *)
 open Typedtree
 
-exception ParseError of string
+exception Error of string
 
 type state = { mod_name: string }
 
@@ -34,13 +34,13 @@ let var state pat =
   | Tpat_var (id, loc) ->
     Atom (Ident.name id)
   | _                     ->
-    raise (ParseError "Not a var")
+    raise (Error "Not a var")
 
 let id expr =
   match expr.exp_desc with
     | Texp_ident (path, loc, typ) ->
       Atom (translate_fn_name (Path.name path))
-    | _                           -> raise (ParseError "Not an id")
+    | _                           -> raise (Error "Not an id")
 
 let constant = function
   | Asttypes.Const_int i ->
@@ -60,6 +60,8 @@ let rec expr state e =
     constructor state exprs desc
   | Texp_ident (path, loc, typ)                       ->
     Atom (translate_fn_name (Path.name path))
+  | Texp_for _                                        ->
+    raise (Error "imperative construct (for) not supported")
   | Texp_function (arg_label, cases, partial) ->
     let clauses = expand_or_patterns cases in
     let rest = match_clauses state ~wrap_patterns:true clauses in
@@ -81,6 +83,8 @@ let rec expr state e =
     Sexp ((Atom "tuple") :: els)
   | Texp_variant (label, e)                           ->
       variant_expr state label e
+  | Texp_while (cond, body)                           ->
+    raise (Error "imperative construct (while) not supported")
   | _                                                 ->
     Atom "todo:expr"
 and
@@ -92,7 +96,7 @@ and
     | []                     -> [];
     | (_, (Some e)) :: exprs ->
       (expr state e) :: (strict_args state exprs)
-    | (_, None) :: _         -> raise (ParseError "Missing expression in arg position")
+    | (_, None) :: _         -> raise (Error "Missing expression in arg position")
 and
   constructor state rest desc =
     match (desc.cstr_name, desc.cstr_res.desc, rest) with
@@ -107,7 +111,7 @@ and
       | c, (Types.Tconstr _), __ ->
         Sexp ((Atom "tuple" :: (atom c) :: rest))
       | c, _, _                  ->
-         raise (ParseError ("missing constructor " ^ c))
+         raise (Error ("missing constructor " ^ c))
 and
   pattern state pat =
     match pat.pat_desc with
@@ -122,7 +126,7 @@ and
       let patterns = List.map (pattern state) patterns in
       constructor state patterns desc
     | Tpat_or (p1, p2, rowdesc)              ->
-      raise (ParseError "or pattern not expanded")
+      raise (Error "or pattern not expanded")
     | Tpat_tuple patterns                    ->
       let elements = List.map (pattern state) patterns in
       Sexp ((Atom "tuple") :: elements)
@@ -209,7 +213,7 @@ let define_function state is_rec vb =
     let rest = match_clauses state ~wrap_patterns:true clauses in
     Sexp ((Atom "defun") :: (var state vb.vb_pat) :: rest)
   | _                                    ->
-    raise (ParseError "top level define did not define a function!")
+    raise (Error "top level define did not define a function!")
 
 let rec define_functions state is_rec value_bindings =
   List.map (define_function state is_rec) value_bindings
@@ -220,7 +224,7 @@ let parse_structure_item state = function
   | Tstr_value (is_rec, value_bindings) ->
     define_functions state is_rec value_bindings
   | _                                   ->
-    raise (ParseError "parse_structure_item")
+    raise (Error "parse_structure_item")
 
 let to_lfe state = function
   | (Cmt_format.Implementation impl) ->
@@ -228,7 +232,7 @@ let to_lfe state = function
     (Sexp [ Atom "defmodule"; (Atom state.mod_name);
             Sexp [Atom "export"; Atom "all"]]) :: (List.flatten impl_defs)
   | _                                ->
-    raise (ParseError "file did not contain implementation")
+    raise (Error "file did not contain implementation")
 
 let rec output_sexp = function
   | Atom str  -> Format.printf " %s " str
