@@ -20,9 +20,13 @@ let translate_fn_name = function
   | "Pervasives.<="  -> "=<"
   | "Pervasives.<"   -> "<"
   | "Pervasives.+"   -> "+"
+  | "Pervasives.+."  -> "+"
   | "Pervasives.-"   -> "-"
+  | "Pervasives.-."  -> "-"
   | "Pervasives.*"   -> "*"
+  | "Pervasives.*."  -> "*"
   | "Pervasives./"   -> "div"
+  | "Pervasives./."  -> "/"
   | "Pervasives.mod" -> "rem"
   | "Pervasives.&&"  -> "andalso"
   | "Pervasives.||"  -> "orelse"
@@ -43,8 +47,10 @@ let id expr =
     | _                           -> raise (Error "Not an id")
 
 let constant = function
-  | Asttypes.Const_int i ->
+  | Asttypes.Const_int i   ->
     Atom (string_of_int i)
+  | Asttypes.Const_float f ->
+    Atom (f ^ "0") (* handle trailing '.' *)
   | _           ->
     Atom "constant_not_implemented"
 
