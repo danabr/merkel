@@ -12,6 +12,10 @@ type sexp =
 let atom s =
    Atom ("'" ^ (String.lowercase_ascii s))
 
+(* Pervasives is quite comprehensive. Perhaps it would be better
+   to ship with our own Pervasives that maps to the corresponding
+   erlang functions.
+*)
 let translate_fn_name = function
   | "Pervasives.>"   -> ">"
   | "Pervasives.>="  -> ">="
@@ -31,6 +35,7 @@ let translate_fn_name = function
   | "Pervasives.&&"  -> "andalso"
   | "Pervasives.||"  -> "orelse"
   | "Pervasives.not" -> "not"
+  | "Pervasives.@"   -> "++"
   | other            -> other
 
 let var state pat =
