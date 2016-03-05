@@ -60,6 +60,11 @@ let rec expr state e =
     let clauses = expand_or_patterns cases in
     let rest = (match_clauses state ~wrap_patterns:false clauses) in
     Sexp ((Atom "case") :: (expr state eval) :: rest)
+  | Texp_tuple exprs                                  ->
+    let els = List.map (expr state) exprs in
+    Sexp ((Atom "tuple") :: els)
+  | Texp_variant (label, e)                           ->
+      variant_expr state label e
   | _                                                 ->
     Atom "todo:expr"
 and
@@ -110,6 +115,13 @@ and
       | None   ->  atom
       | Some p ->
         Sexp [Atom "tuple"; atom; (pattern state p)]
+and
+  variant_expr state label e =
+    let atom = atom (String.lowercase_ascii label) in
+    match e with
+      | None   ->  atom
+      | Some e ->
+        Sexp [Atom "tuple"; atom; (expr state e)]
 and
   bindings state = function
     | []                      -> []

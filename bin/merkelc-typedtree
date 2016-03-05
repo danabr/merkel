@@ -1,7 +1,7 @@
 #!/bin/bash
 
 output_file="`basename $1 .ml`.ttr"
-ocamlc -c -dtypedtree -bin-annot $1
+ocamlc -c -dtypedtree -w "@a" -bin-annot $1
 exitcode=$?
 rm -f *.cmi *.cmo
 if [ $exitcode -ne 0 ]; then 
