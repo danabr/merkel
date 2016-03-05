@@ -13,13 +13,21 @@ let atom s =
    Atom ("'" ^ (String.lowercase_ascii s))
 
 let translate_fn_name = function
-  | "Pervasives.<=" -> "=<"
-  | "Pervasives.==" -> "=:="
-  | "Pervasives.="  -> "=:="
-  | "Pervasives.+"  -> "+"
-  | "Pervasives.-"  -> "-"
-  | "Pervasives.*"  -> "*"
-  | other           -> other
+  | "Pervasives.>"   -> ">"
+  | "Pervasives.>="  -> ">="
+  | "Pervasives.=="  -> "=:="
+  | "Pervasives.="   -> "=:="
+  | "Pervasives.<="  -> "=<"
+  | "Pervasives.<"   -> "<"
+  | "Pervasives.+"   -> "+"
+  | "Pervasives.-"   -> "-"
+  | "Pervasives.*"   -> "*"
+  | "Pervasives./"   -> "div"
+  | "Pervasives.mod" -> "rem"
+  | "Pervasives.&&"  -> "andalso"
+  | "Pervasives.||"  -> "orelse"
+  | "Pervasives.not" -> "not"
+  | other            -> other
 
 let var state pat =
   match pat.pat_desc with
