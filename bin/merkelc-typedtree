@@ -1,15 +1,2 @@
 #!/bin/bash
-
-input_file=$1
-output_file="`basename $input_file .ml`.ttr"
-shift
-ocamlc -c  -w "@a-4-27" -bin-annot $* $input_file
-exitcode=$?
-rm -f *.cmi *.cmo
-if [ $exitcode -ne 0 ]; then 
-  line=`grep --line-number "Error:" $output_file | cut -f1 -d:`
-  start=`expr $line - 1`
-  tail -n $line $output_file 1>&2
-  rm $output_file
-  exit 1
-fi
+ocamlc -c -w "@a-4-27" -bin-annot $*
