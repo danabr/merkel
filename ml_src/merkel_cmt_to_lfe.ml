@@ -161,11 +161,9 @@ and
 (*
   OCaml has or-pattern, which lfe/erlang does not support.
   All clauses containing or patterns must be duplicated.
-  The approach taken here is ad-hoc and inefficient,
-  and broken in at least one known case, namely:
-    let only_small_lists = function
-      | [_] | [_;_] as x  -> x
-      | _ -> []
+  The approach taken here is ad-hoc and inefficient.
+  We should inspect all patterns that may contain other patterns.
+  List.flatmap (expand_case current_case) cases
 *)
   flatten_or p =
     match p.pat_desc with
@@ -188,7 +186,7 @@ and
         let make_case p =
           let newp = {current_pattern with pat_desc = Tpat_alias (p, id, loc)} in
           {case with c_lhs = newp}
-        in (simple_expand_or case p make_case p.pat_desc)
+        in (simple_expand_or case p make_case p.pat_desc) @ (expand_or_patterns cases)
       | other                   ->
         let make_case p = {case with c_lhs = p} in
         (simple_expand_or case current_pattern make_case other) @ (expand_or_patterns cases)
