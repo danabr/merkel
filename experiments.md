@@ -26,9 +26,9 @@ let day_of_week (d : wday) =
 
 (*
 $ erl
-1> {ok, wednesday} = 'Test':int_to_wday('List_test':day_of_week(wednesday)).
+1> {ok, wednesday} = 'Wdays':int_to_wday('Wdays':day_of_week(wednesday)).
 {ok,wednesday}
-2> 'Test':int_to_wday(8).
+2> 'Wdays':int_to_wday(8).
 error
 *)
 let int_to_wday = function
