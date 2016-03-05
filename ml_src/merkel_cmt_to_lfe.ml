@@ -54,6 +54,10 @@ let rec expr state e =
   | Texp_let (Nonrecursive, value_bindings, in_expr)  ->
     Sexp [Atom "let*"; Sexp (bindings state value_bindings);
           expr state in_expr]
+  (* Ignore exceptions for now. *)
+  (* We should probably check for or-patterns here *)
+  | Texp_match (eval, cases, [], partial)             ->
+    Sexp ((Atom "case") :: (expr state eval) :: (match_clauses state cases))
   | _                                                 ->
     Atom "todo:expr"
 and
@@ -87,7 +91,7 @@ and
     | Tpat_var (id, loc)                     ->
       Atom (Ident.name id)
     | Tpat_variant (label, pattern, rowdesc) ->
-      variant_pattern state label rowdesc pattern
+      variant_pattern state label pattern rowdesc
     | _                                      ->
       Atom "pattern_not_implemented"
 and
@@ -98,28 +102,29 @@ and
       Sexp ((Atom "cons") :: patterns)
     | _    -> Atom "constructor_pattern_not_implemented"
 and
-  variant_pattern state label rowdesc = function
-    | None   -> atom (String.lowercase_ascii label)
-    | Some p ->
-      Sexp [Atom "tuple"; (pattern state p)]
+  variant_pattern state label p rowdesc =
+    let atom = atom (String.lowercase_ascii label) in
+    match p with
+      | None   ->  atom
+      | Some p ->
+        Sexp [Atom "tuple"; atom; (pattern state p)]
 and
   bindings state = function
     | []                      -> []
     | {vb_pat; vb_expr} :: bs ->
       (Sexp [pattern state vb_pat; expr state vb_expr]) :: bindings state bs
-
-
-let rec function_clauses state = function
-  | []            -> [];
-  | case :: cases ->
-    let lhs = pattern state case.c_lhs in
-    let rhs = expr state case.c_rhs in
-    match case.c_guard with
-    | None       ->
-        (Sexp [ Sexp [lhs]; rhs]) :: (function_clauses state cases)
-    | Some guard ->
-        let wh = Sexp [Atom "when"; (expr state guard)] in
-        (Sexp [ Sexp [lhs]; wh; rhs]) :: (function_clauses state cases)
+and
+  match_clauses state = function
+    | []            -> [];
+    | case :: cases ->
+      let lhs = pattern state case.c_lhs in
+      let rhs = expr state case.c_rhs in
+      match case.c_guard with
+      | None       ->
+          (Sexp [ Sexp [lhs]; rhs]) :: (match_clauses state cases)
+      | Some guard ->
+          let wh = Sexp [Atom "when"; (expr state guard)] in
+          (Sexp [ Sexp [lhs]; wh; rhs]) :: (match_clauses state cases)
 
 (*
   OCaml has or-pattern, which lfe/erlang does not support.
@@ -157,7 +162,7 @@ let define_function state is_rec vb =
   | Texp_function (arg_label, cases, partial) ->
     (* Note: All functions are single argument functions *)
     let clauses = expand_or_patterns cases in
-    Sexp ((Atom "defun") :: (var state vb.vb_pat) :: (function_clauses state clauses))
+    Sexp ((Atom "defun") :: (var state vb.vb_pat) :: (match_clauses state clauses))
   | _                                    ->
     raise (ParseError "top level define did not define a function!")
 
