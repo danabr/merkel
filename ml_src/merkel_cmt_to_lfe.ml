@@ -9,6 +9,8 @@ type sexp =
     Atom of string
   | Sexp of sexp list
 
+let atom s = Atom ("'" ^ s)
+
 let translate_fn_name = function
   | "Pervasives.<=" -> "=<"
   | "Pervasives.+" -> "+"
@@ -38,50 +40,73 @@ let constant = function
 let rec expr state e =
   match e.exp_desc with
   (* Note: optional arguments make things tricky *)
-  | Texp_apply (fn, args)                            ->
+  | Texp_apply (fn, args)                             ->
     Sexp (id(fn) :: (strict_args state args))
-  | Texp_constant c                                  ->
+  | Texp_constant c                                   ->
     constant c
-  | Texp_construct (loc, desc, exprs)                ->
+  | Texp_construct (loc, desc, exprs)                 ->
     constructor_exprs state exprs desc.cstr_name
-  | Texp_ident (path, loc, typ)                      ->
+  | Texp_ident (path, loc, typ)                       ->
     Atom (translate_fn_name (Path.name path))
-  | Texp_ifthenelse (test, if_true, (Some if_false)) ->
+  | Texp_ifthenelse (test, if_true, (Some if_false) ) ->
     Sexp [Atom "if"; (expr state test);
           (expr state if_true); (expr state if_false)]
-  | _                                                ->
+  | Texp_let (Nonrecursive, value_bindings, in_expr)  ->
+    Sexp [Atom "let*"; Sexp (bindings state value_bindings);
+          expr state in_expr]
+  | _                                                 ->
     Atom "todo:expr"
 and
   strict_args state = function
-  | []                     -> [];
-  | (_, (Some e)) :: exprs ->
-    (expr state e) :: (strict_args state exprs)
-  | (_, None) :: _         -> raise (ParseError "Missing expression in arg position")
+    | []                     -> [];
+    | (_, (Some e)) :: exprs ->
+      (expr state e) :: (strict_args state exprs)
+    | (_, None) :: _         -> raise (ParseError "Missing expression in arg position")
 and
   constructor_exprs state exprs = function
-  | "false" -> Atom "'false"
-  | "true"  -> Atom "'true"
-  | _       -> Atom "constructor_expression_not_implemented"
-
-let rec pattern state pat =
-  match pat.pat_desc with
-  | Tpat_any                             ->
-    Atom "_"
-  | Tpat_constant c                      ->
-    constant c
-  | Tpat_construct (loc, desc, patterns) ->
-    constructor_pattern state patterns desc.cstr_name
-  | Tpat_var (id, loc)                   ->
-    Atom (Ident.name id)
-  | _                                    ->
-    Atom "pattern_not_implemented"
+    | "false" -> Atom "'false"
+    | "true"  -> Atom "'true"
+    | _       -> Atom "constructor_expression_not_implemented"
+and
+  pattern state pat =
+    match pat.pat_desc with
+    | Tpat_alias (p, id, loc)                ->
+      Sexp [Atom "="; (pattern state p);
+            Atom (Ident.name id)]
+    | Tpat_any                               ->
+      Atom "_"
+    | Tpat_constant c                        ->
+      constant c
+    | Tpat_construct (loc, desc, patterns)   ->
+      constructor_pattern state patterns desc.cstr_name
+    | Tpat_or (p1, p2, rowdesc)              ->
+      raise (ParseError "or pattern not expanded")
+    | Tpat_tuple patterns                    ->
+      let elements = List.map (pattern state) patterns in
+      Sexp ((Atom "tuple") :: elements)
+    | Tpat_var (id, loc)                     ->
+      Atom (Ident.name id)
+    | Tpat_variant (label, pattern, rowdesc) ->
+      variant_pattern state label rowdesc pattern
+    | _                                      ->
+      Atom "pattern_not_implemented"
 and
   constructor_pattern state patterns = function
-  | "[]" -> Atom "()"
-  | "::" ->
-    let patterns = List.map (pattern state) patterns in
-    Sexp ((Atom "cons") :: patterns)
-  | _    -> Atom "constructor_pattern_not_implemented"
+    | "[]" -> Atom "()"
+    | "::" ->
+      let patterns = List.map (pattern state) patterns in
+      Sexp ((Atom "cons") :: patterns)
+    | _    -> Atom "constructor_pattern_not_implemented"
+and
+  variant_pattern state label rowdesc = function
+    | None   -> atom (String.lowercase_ascii label)
+    | Some p ->
+      Sexp [Atom "tuple"; (pattern state p)]
+and
+  bindings state = function
+    | []                      -> []
+    | {vb_pat; vb_expr} :: bs ->
+      (Sexp [pattern state vb_pat; expr state vb_expr]) :: bindings state bs
 
 
 let rec function_clauses state = function
@@ -96,11 +121,43 @@ let rec function_clauses state = function
         let wh = Sexp [Atom "when"; (expr state guard)] in
         (Sexp [ Sexp [lhs]; wh; rhs]) :: (function_clauses state cases)
 
+(*
+  OCaml has or-pattern, which lfe/erlang does not support.
+  All clauses containing or patterns must be duplicated.
+  The approach taken here is ad-hoc and inefficient.
+*)
+let rec flatten_or p =
+  match p.pat_desc with
+  | Tpat_or (p1, p2, _) -> (flatten_or p1) @ (flatten_or p2)
+  | _                   -> [p]
+
+let simple_expand_or case pattern make_case = function
+  | Tpat_or _ ->
+      let ps = flatten_or pattern in
+      List.map make_case ps
+  | _         -> (* not suspectible to or patterns, we hope...*)
+    [case]
+
+let rec expand_or_patterns = function
+  | []            -> [];
+  | case :: cases ->
+    let current_pattern = case.c_lhs in
+    match current_pattern.pat_desc with
+    | Tpat_alias (p, id, loc) ->
+      let make_case p =
+        let newp = {current_pattern with pat_desc = Tpat_alias (p, id, loc)} in
+        {case with c_lhs = newp}
+      in (simple_expand_or case p make_case p.pat_desc)
+    | other                   ->
+      let make_case p = {case with c_lhs = p} in
+      (simple_expand_or case current_pattern make_case other) @ (expand_or_patterns cases)
+
 let define_function state is_rec vb =
   match vb.vb_expr.exp_desc with
   | Texp_function (arg_label, cases, partial) ->
     (* Note: All functions are single argument functions *)
-    Sexp ((Atom "defun") :: (var state vb.vb_pat) :: (function_clauses state cases))
+    let clauses = expand_or_patterns cases in
+    Sexp ((Atom "defun") :: (var state vb.vb_pat) :: (function_clauses state clauses))
   | _                                    ->
     raise (ParseError "top level define did not define a function!")
 
@@ -108,9 +165,11 @@ let rec define_functions state is_rec value_bindings =
   List.map (define_function state is_rec) value_bindings
 
 let parse_structure_item state = function
+  | Tstr_type (is_rec, typedecls)       ->
+    []
   | Tstr_value (is_rec, value_bindings) ->
     define_functions state is_rec value_bindings
-  | _ ->
+  | _                                   ->
     raise (ParseError "parse_structure_item")
 
 let to_lfe state = function
