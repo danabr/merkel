@@ -57,7 +57,9 @@ let rec expr state e =
   (* Ignore exceptions for now. *)
   (* We should probably check for or-patterns here *)
   | Texp_match (eval, cases, [], partial)             ->
-    Sexp ((Atom "case") :: (expr state eval) :: (match_clauses state cases))
+    let clauses = expand_or_patterns cases in
+    let rest = (match_clauses state ~wrap_patterns:false clauses) in
+    Sexp ((Atom "case") :: (expr state eval) :: rest)
   | _                                                 ->
     Atom "todo:expr"
 and
@@ -114,55 +116,58 @@ and
     | {vb_pat; vb_expr} :: bs ->
       (Sexp [pattern state vb_pat; expr state vb_expr]) :: bindings state bs
 and
-  match_clauses state = function
+  match_clauses state ~wrap_patterns = function
     | []            -> [];
     | case :: cases ->
       let lhs = pattern state case.c_lhs in
+      let lhs_sexp = if wrap_patterns then (Sexp [lhs]) else lhs in
       let rhs = expr state case.c_rhs in
+      let rest = (match_clauses state ~wrap_patterns cases) in
       match case.c_guard with
       | None       ->
-          (Sexp [ Sexp [lhs]; rhs]) :: (match_clauses state cases)
+          (Sexp [lhs_sexp; rhs]) :: rest
       | Some guard ->
           let wh = Sexp [Atom "when"; (expr state guard)] in
-          (Sexp [ Sexp [lhs]; wh; rhs]) :: (match_clauses state cases)
-
+          (Sexp [lhs_sexp; wh; rhs]) :: rest
+and
 (*
   OCaml has or-pattern, which lfe/erlang does not support.
   All clauses containing or patterns must be duplicated.
   The approach taken here is ad-hoc and inefficient.
 *)
-let rec flatten_or p =
-  match p.pat_desc with
-  | Tpat_or (p1, p2, _) -> (flatten_or p1) @ (flatten_or p2)
-  | _                   -> [p]
-
-let simple_expand_or case pattern make_case = function
-  | Tpat_or _ ->
-      let ps = flatten_or pattern in
-      List.map make_case ps
-  | _         -> (* not suspectible to or patterns, we hope...*)
-    [case]
-
-let rec expand_or_patterns = function
-  | []            -> [];
-  | case :: cases ->
-    let current_pattern = case.c_lhs in
-    match current_pattern.pat_desc with
-    | Tpat_alias (p, id, loc) ->
-      let make_case p =
-        let newp = {current_pattern with pat_desc = Tpat_alias (p, id, loc)} in
-        {case with c_lhs = newp}
-      in (simple_expand_or case p make_case p.pat_desc)
-    | other                   ->
-      let make_case p = {case with c_lhs = p} in
-      (simple_expand_or case current_pattern make_case other) @ (expand_or_patterns cases)
+  flatten_or p =
+    match p.pat_desc with
+    | Tpat_or (p1, p2, _) -> (flatten_or p1) @ (flatten_or p2)
+    | _                   -> [p]
+and
+  simple_expand_or case pattern make_case = function
+    | Tpat_or _ ->
+        let ps = flatten_or pattern in
+        List.map make_case ps
+    | _         -> (* not suspectible to or patterns, we hope...*)
+      [case]
+and
+  expand_or_patterns = function
+    | []            -> [];
+    | case :: cases ->
+      let current_pattern = case.c_lhs in
+      match current_pattern.pat_desc with
+      | Tpat_alias (p, id, loc) ->
+        let make_case p =
+          let newp = {current_pattern with pat_desc = Tpat_alias (p, id, loc)} in
+          {case with c_lhs = newp}
+        in (simple_expand_or case p make_case p.pat_desc)
+      | other                   ->
+        let make_case p = {case with c_lhs = p} in
+        (simple_expand_or case current_pattern make_case other) @ (expand_or_patterns cases)
 
 let define_function state is_rec vb =
   match vb.vb_expr.exp_desc with
   | Texp_function (arg_label, cases, partial) ->
     (* Note: All functions are single argument functions *)
     let clauses = expand_or_patterns cases in
-    Sexp ((Atom "defun") :: (var state vb.vb_pat) :: (match_clauses state clauses))
+    let rest = match_clauses state ~wrap_patterns:true clauses in
+    Sexp ((Atom "defun") :: (var state vb.vb_pat) :: rest)
   | _                                    ->
     raise (ParseError "top level define did not define a function!")
 
