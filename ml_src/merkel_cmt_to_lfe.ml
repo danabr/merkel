@@ -10,7 +10,7 @@ type sexp =
   | Sexp of sexp list
 
 let atom s =
-   Atom ("'" ^ (String.lowercase_ascii s))
+   Atom ("'" ^ (String.uncapitalize_ascii s))
 
 (* Pervasives is quite comprehensive. Perhaps it would be better
    to ship with our own Pervasives that maps to the corresponding
