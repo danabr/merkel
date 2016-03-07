@@ -132,6 +132,9 @@ and
             Atom (Ident.name id)]
     | Tpat_any                               ->
       Atom "_"
+    (* HACK! to handle multi-argument functions *)
+    | Tpat_array patterns                    ->
+      Sexp (List.map (pattern state) patterns)
     | Tpat_constant c                        ->
       constant c
     | Tpat_construct (loc, desc, patterns)   ->
@@ -215,17 +218,35 @@ and
         let make_case p = {case with c_lhs = p} in
         (simple_expand_or case current_pattern make_case other) @ (expand_or_patterns cases)
 
-let define_function state is_rec vb =
-  match vb.vb_expr.exp_desc with
-  | Texp_function (arg_label, cases, partial) ->
-    (* Note: All functions are single argument functions.
-       This gets weird in Erlang land.
-    *)
-    let clauses = expand_or_patterns cases in
-    let rest = match_clauses state ~wrap_patterns:true clauses in
-    Sexp ((Atom "defun") :: (var state vb.vb_pat) :: rest)
-  | _                                    ->
-    raise (Error "top level define did not define a function!")
+let rec decurry patterns case =
+    match case.c_rhs.exp_desc with
+      | Texp_function (_, [subcase], _) -> (* Next arg *)
+        decurry (case.c_lhs :: patterns) subcase
+      | Texp_function (_, cases, _)     ->
+        let new_case c =
+          let old = c.c_lhs in
+          let pattern = Tpat_array (List.rev (old :: patterns)) in
+          let new_lhs = {c.c_lhs with pat_desc = pattern } in
+          { c with c_lhs = new_lhs }
+        in
+        List.map new_case cases
+      | _                               -> (* Implementation *)
+        let pattern = Tpat_array (List.rev (case.c_lhs :: patterns)) in
+        let new_lhs = {case.c_lhs with pat_desc = pattern } in
+        [{ case with c_lhs = new_lhs }]
+and
+  define_function state is_rec vb =
+    match vb.vb_expr.exp_desc with
+    | Texp_function (arg_label, cases, partial) ->
+      (* Note: All functions are single argument functions.
+         This gets weird in Erlang land.
+      *)
+      let decurried = List.flatten (List.map (decurry []) cases) in
+      let clauses = expand_or_patterns decurried in
+      let rest = match_clauses state ~wrap_patterns:false clauses in
+      Sexp ((Atom "defun") :: (var state vb.vb_pat) :: rest)
+    | _                                    ->
+      raise (Error "top level define did not define a function!")
 
 let rec define_functions state is_rec value_bindings =
   List.map (define_function state is_rec) value_bindings
