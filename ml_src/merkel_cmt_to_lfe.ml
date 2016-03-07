@@ -80,7 +80,7 @@ let rec expr state e =
   | Texp_ifthenelse (test, if_true, else_option ) ->
     Sexp [Atom "if"; (expr state test);
           (expr state if_true); (else_expr state else_option)]
-  | Texp_let (Nonrecursive, value_bindings, in_expr)  ->
+  | Texp_let (Asttypes.Nonrecursive, value_bindings, in_expr)  ->
     Sexp [Atom "let*"; Sexp (bindings state value_bindings);
           expr state in_expr]
   (* Ignore exceptions for now. *)
@@ -110,6 +110,7 @@ and
     | (_, None) :: _         -> raise (Error "Missing expression in arg position")
 and
   constructor state rest desc =
+    let open Types in
     match (desc.cstr_name, desc.cstr_res.desc, rest) with
       | "false", _, _            -> Atom "'false"
       | "true", _, _             -> Atom "'true"
@@ -253,8 +254,9 @@ let rec output_sexp = function
     Format.printf ")"
 
 let () =
+  let open Cmt_format in
   let cmt_file = (Array.get Sys.argv 1) in
-  let cmt = Cmt_format.read_cmt cmt_file in
+  let cmt = read_cmt cmt_file in
   let state = { mod_name = cmt.cmt_modname } in
   let sexp = to_lfe state cmt.cmt_annots in
   List.iter output_sexp sexp;
