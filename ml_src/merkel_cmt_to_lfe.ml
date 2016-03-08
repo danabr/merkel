@@ -3,7 +3,13 @@ open Typedtree
 
 exception Error of string
 
-type state = { mod_name: string }
+type record = { name: string;
+                fields: string list
+              }
+
+type state = { mod_name: string;
+               records: record list
+             }
 
 type sexp =
     Atom of string
@@ -52,10 +58,13 @@ let id expr =
     | _                           -> raise (Error "Not an id")
 
 let constant = function
-  | Asttypes.Const_int i   ->
+  | Asttypes.Const_int i            ->
     Atom (string_of_int i)
-  | Asttypes.Const_float f ->
+  | Asttypes.Const_float f          ->
     Atom (f ^ "0") (* handle trailing '.' *)
+  (* TODO: Should strings be handled as lists or binaries? *)
+  | Asttypes.Const_string (s, None) ->
+    Atom ("\"" ^ s ^ "\"")
   | _           ->
     Atom "constant_not_implemented"
 
@@ -84,11 +93,12 @@ let rec expr state e =
     Sexp [Atom "let*"; Sexp (bindings state value_bindings);
           expr state in_expr]
   (* Ignore exceptions for now. *)
-  (* We should probably check for or-patterns here *)
   | Texp_match (eval, cases, [], partial)             ->
     let clauses = expand_or_patterns cases in
     let rest = (match_clauses state ~wrap_patterns:false clauses) in
     Sexp ((Atom "case") :: (expr state eval) :: rest)
+  | Texp_record (fields, None)                        ->
+    make_record state fields
   | Texp_tuple exprs                                  ->
     let els = List.map (expr state) exprs in
     Sexp ((Atom "tuple") :: els)
@@ -98,6 +108,26 @@ let rec expr state e =
     raise (Error "imperative construct (while) not supported")
   | _                                                 ->
     Atom "todo:expr"
+and
+  find_record records (_, label, _) =
+    let open Types in
+    let needle = (label : label_description).lbl_name in
+    let predicate r = List.mem needle r.fields in
+    List.find predicate records
+and
+  sort_record_fields field_exprs = function
+    | []                        -> []
+    | field_name :: field_names ->
+      let open Types in
+      let predicate (_, (dscr : label_description), _) = dscr.lbl_name = field_name in
+      let next = List.find predicate field_exprs in
+      next :: (sort_record_fields field_exprs field_names)
+and
+make_record state fields =
+  let record = find_record state.records (List.hd fields) in
+  let sorted_fields = sort_record_fields fields record.fields in
+  let fields_sexp = List.map (fun (_, _, e) -> expr state e) sorted_fields in
+  Sexp ((Atom "tuple") :: (atom record.name) :: fields_sexp)
 and
   else_expr state = function
     | None   -> atom "false"
@@ -251,17 +281,37 @@ and
 let rec define_functions state is_rec value_bindings =
   List.map (define_function state is_rec) value_bindings
 
-let parse_structure_item state = function
+let add_records state0 types =
+  let open Types in
+  match types with
+  | []                                 -> state0
+  | {typ_id; typ_type} :: declarations ->
+    match typ_type.type_kind with
+      | Type_record (fields, _) ->
+        let field_names = List.map (fun f -> Ident.name f.ld_id) fields in
+        let record = { name=(Ident.name typ_id); fields = field_names } in
+        let records = record :: state0.records in
+        {state0 with records = records }
+      | _                       -> state0
+
+let parse_structure_item state0 = function
   | Tstr_type (is_rec, typedecls)       ->
-    []
+    let state = add_records state0 typedecls in
+    (state, [])
   | Tstr_value (is_rec, value_bindings) ->
-    define_functions state is_rec value_bindings
+    (state0, define_functions state0 is_rec value_bindings)
   | _                                   ->
     raise (Error "parse_structure_item")
 
+let rec parse_structure_items state0 code = function
+  | []            -> List.rev code
+  | item :: items ->
+    let (state, new_code) = parse_structure_item state0 item.str_desc in
+    parse_structure_items state (new_code :: code) items
+
 let to_lfe state = function
   | (Cmt_format.Implementation impl) ->
-    let impl_defs = List.map (fun x -> parse_structure_item state x.str_desc) impl.str_items in
+    let impl_defs = parse_structure_items state [] impl.str_items in
     (Sexp [ Atom "defmodule"; (Atom state.mod_name);
             Sexp [Atom "export"; Atom "all"]]) :: (List.flatten impl_defs)
   | _                                ->
@@ -278,7 +328,9 @@ let () =
   let open Cmt_format in
   let cmt_file = (Array.get Sys.argv 1) in
   let cmt = read_cmt cmt_file in
-  let state = { mod_name = cmt.cmt_modname } in
+  let state = { mod_name = cmt.cmt_modname;
+                records = []
+              } in
   let sexp = to_lfe state cmt.cmt_annots in
   List.iter output_sexp sexp;
   Format.printf "\n"
