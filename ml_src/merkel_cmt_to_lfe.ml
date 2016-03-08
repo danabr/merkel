@@ -4,6 +4,17 @@
    This means that any hacka is allowed. Modularity, tests or
    beauty are not concerns.
 *)
+
+(*
+  Lessons learded so far:
+  * or-patterns must be expanded into multiple clauses, because LFE does not
+    have them.
+  * All ocaml functions are single argument. Functions must be de-curried.
+  * The AST does not identify records in expressions by names, but by their
+    fields. Thus it is necessary to traverse type declarations build a lookup
+    table from field name to record name.
+  * Record fields must be sorted in the same order as in their definition (Erlang compatibility)
+*)
 open Typedtree
 
 exception Error of string
@@ -273,9 +284,6 @@ and
   define_function state is_rec vb =
     match vb.vb_expr.exp_desc with
     | Texp_function (arg_label, cases, partial) ->
-      (* Note: All functions are single argument functions.
-         This gets weird in Erlang land.
-      *)
       let decurried = List.flatten (List.map (decurry []) cases) in
       let clauses = expand_or_patterns decurried in
       let rest = match_clauses state ~wrap_patterns:false clauses in
