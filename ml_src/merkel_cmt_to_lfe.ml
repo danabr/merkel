@@ -1,4 +1,9 @@
 (* .cmt file in -> lfe out *)
+(* This module, like all the code is this project, is a hack.
+   Its only purpose is to aid experimentation and exploration.
+   This means that any hacka is allowed. Modularity, tests or
+   beauty are not concerns.
+*)
 open Typedtree
 
 exception Error of string
