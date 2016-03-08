@@ -31,34 +31,33 @@ type sexp =
     Atom of string
   | Sexp of sexp list
 
-let atom s =
-   Atom ("'" ^ (String.uncapitalize_ascii s))
+let uncapitalize = String.uncapitalize_ascii
+let quote s = "'" ^ s
+
+let atom s = Atom (quote (uncapitalize s))
+
+let unqoted_atom s = Atom (uncapitalize s)
 
 (* Pervasives is quite comprehensive. Perhaps it would be better
    to ship with our own Pervasives that maps to the corresponding
    erlang functions.
 *)
 let translate_fn_name = function
-  | "Pervasives.>"   -> ">"
-  | "Pervasives.>="  -> ">="
-  | "Pervasives.=="  -> "=:="
-  | "Pervasives.="   -> "=:="
-  | "Pervasives.<="  -> "=<"
-  | "Pervasives.<"   -> "<"
-  | "Pervasives.+"   -> "+"
-  | "Pervasives.+."  -> "+"
-  | "Pervasives.-"   -> "-"
-  | "Pervasives.-."  -> "-"
-  | "Pervasives.*"   -> "*"
-  | "Pervasives.*."  -> "*"
-  | "Pervasives./"   -> "div"
-  | "Pervasives./."  -> "/"
-  | "Pervasives.mod" -> "rem"
-  | "Pervasives.&&"  -> "andalso"
-  | "Pervasives.||"  -> "orelse"
-  | "Pervasives.not" -> "not"
-  | "Pervasives.@"   -> "++"
-  | other            -> other
+  | "Pervasives", "=="      -> ("erlang", "=:=")
+  | "Pervasives", "="       -> ("erlang", "=:=")
+  | "Pervasives", "<="      -> ("erlang", "=<")
+  | "Pervasives", "+."      -> ("erlang", "+")
+  | "Pervasives", "-."      -> ("erlang", "-")
+  | "Pervasives", "*."      -> ("erlang", "*")
+  | "Pervasives", "/"       -> ("erlang", "div")
+  | "Pervasives", "/."      -> ("erlang", "/")
+  | "Pervasives", "mod"     -> ("erlang", "rem")
+  | "Pervasives", "&&"      -> ("erlang", "andalso")
+  | "Pervasives", "||"      -> ("erlang", "orelse")
+  | "Pervasives", "@"       -> ("erlang", "++")
+  | "Pervasives", fun_name  -> ("erlang", fun_name)
+  | mod_name, fun_name      ->
+    ((uncapitalize mod_name), (uncapitalize fun_name))
 
 let var state pat =
   match pat.pat_desc with
@@ -67,10 +66,18 @@ let var state pat =
   | _                     ->
     raise (Error "Not a var")
 
-let id expr =
+let mod_call (Path.Pdot (path, fun_name, _)) =
+  match path with
+    | Path.Pident id -> translate_fn_name ((Ident.name id), fun_name)
+    | _              -> raise (Error "Nested modules not supported")
+
+let function_name expr =
   match expr.exp_desc with
-    | Texp_ident (path, loc, typ) ->
-      Atom (translate_fn_name (Path.name path))
+    | Texp_ident ((Path.Pident id), loc, typ)       ->
+      Atom (Ident.name id)
+    | Texp_ident ((Path.Pdot _ ) as path, loc, typ) ->
+      let (mod_name, fun_name) = mod_call(path) in
+      Atom (mod_name ^ ":" ^ fun_name)
     | _                           -> raise (Error "Not an id")
 
 let constant = function
@@ -88,14 +95,16 @@ let rec expr state e =
   match e.exp_desc with
   (* Note: optional arguments make things tricky *)
   | Texp_apply (fn, args)                             ->
-    Sexp (id(fn) :: (strict_args state args))
+    Sexp (function_name(fn) :: (strict_args state args))
   | Texp_constant c                                   ->
     constant c
   | Texp_construct (loc, desc, exprs)                 ->
     let exprs = List.map (expr state) exprs in
     constructor state exprs desc
-  | Texp_ident (path, loc, typ)                       ->
-    Atom (translate_fn_name (Path.name path))
+  | Texp_ident ((Path.Pident id), loc, typ)           ->
+    Atom (Ident.name id)
+  | Texp_ident (_, loc, typ)                          ->
+    raise (Error "Unhandled id expression")
   | Texp_for _                                        ->
     raise (Error "imperative construct (for) not supported")
   | Texp_function (arg_label, cases, partial) ->
@@ -325,7 +334,7 @@ let rec parse_structure_items state0 code = function
 let to_lfe state = function
   | (Cmt_format.Implementation impl) ->
     let impl_defs = parse_structure_items state [] impl.str_items in
-    (Sexp [ Atom "defmodule"; (Atom state.mod_name);
+    (Sexp [ Atom "defmodule"; (unqoted_atom state.mod_name);
             Sexp [Atom "export"; Atom "all"]]) :: (List.flatten impl_defs)
   | _                                ->
     raise (Error "file did not contain implementation")

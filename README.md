@@ -41,7 +41,7 @@ $ ./bin/merkel_cmt_to_lfe examples/fac.cmt
 $ ./bin/merkel_cmt_to_lfe examples/fac.cmt > /tmp/fac.lfe
 $ lfec -o ebin/ /tmp/fac.lfe
 $ erl -pa ebin
-1> 'Fac':fac(10).
+1> fac:fac(10).
 3628800
 ```
 

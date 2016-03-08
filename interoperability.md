@@ -2,6 +2,10 @@
 
 This page describes how various OCaml concepts translate into the Erlang world.
 
+## Module names
+The module `List` in ML, becomes `list` in Erlang. The module name `BumpyCase` becomes
+`bumpyCase` in Erlang. The module name `Lower_case` becomes `lower_case` in Erlang.
+
 ## Atoms <-> Variants
 Variants (regular and polymorphic)  are turned into atoms or tuples. E.g. the polymorphic
 variant `` `Red `` is converted into the atom `'red'`, and the variant
@@ -10,6 +14,7 @@ variant `` `Red `` is converted into the atom `'red'`, and the variant
 Here is an example:
 
 ```ocaml
+(* wdays.ml *)
 type wday = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
 
 let day_of_week = function
@@ -23,9 +28,9 @@ let day_of_week = function
 
 (*
 $ erl
-1> {ok, wednesday} = 'Wdays':int_to_wday('Wdays':day_of_week(wednesday)).
+1> {ok, wednesday} = wdays:int_to_wday(wdays:day_of_week(wednesday)).
 {ok,wednesday}
-2> 'Wdays':int_to_wday(8).
+2> wdays:int_to_wday(8).
 error
 *)
 let int_to_wday = function
